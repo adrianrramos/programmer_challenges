@@ -1,7 +1,6 @@
 #include <stdatomic.h>
 #include <stdint.h>
 #include <assert.h>
-#include <malloc.h>
 #include <stdbool.h>
 #include <stdint.h> // used for uint32_t
 #include <stdio.h>
@@ -52,7 +51,17 @@ int *add_used_block(ssize_t size) {
 
   while (block != NULL) {
     assert(block->marker == BLOCK_MARKER);
+    if ((block->length + sizeof(area)) >= size && block->in_use == false) {
+      if (smallest_block == NULL || smallest_block->length > block->length) {
+        smallest_block = block;
+      }
+    }
+    last_block = block;
+    block = block->next;
   }
+
+  // no big enough blocks.
+
 }
 
 int *an_malloc(ssize_t size) {
