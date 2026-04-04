@@ -1,3 +1,4 @@
+#include <cstring>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <assert.h>
@@ -11,6 +12,8 @@
 // macOS deprecated use of sbrk
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
+void debug_log(const char *msg) { write(STDOUT_FILENO, msg, strlen(msg));}
 
 struct free_area {
   uint8_t marker;
@@ -51,6 +54,38 @@ area *find_last_block() {
   return block;
 }
 
+bool an_free(void *ptr) {
+  my_stats *malloc_header = get_malloc_header();
+  while (malloc_header->my_simple_lock) {
+    sleep(1);
+  };
+  malloc_header->my_simple_lock = true;
+  // free does not get the start of the block but the start of the data area of the block.
+  area *block = ptr - sizeof(area);
+  if (block->marker != BLOCK_MARKER) {
+    // the given pointer is not the start of any malloc block
+    return false;
+  } else {
+    block->in_use = false;
+    memset(ptr, 0, block->length);
+    if (block->next != NULL && (block->next)->in_use == false) {
+      // Next block is not used, we can merge them
+      area *not_used_next_block = block->next;
+      // skip next block in linked list.
+      if (not_used_next_block != NULL) {
+        // connect current block and two blocks ahead
+        block->next = not_used_next_block->next;
+        // if two blocks ahead, the block is not null, we connect it back.
+        if (not_used_next_block->next != NULL) {
+          not_used_next_block->next->prev = block;
+        }
+      } else {
+        block->next = NULL;
+      }
+    }
+  }
+}
+
 int *add_used_block(ssize_t size) {
   my_stats *malloc_header = get_malloc_header();
   while (malloc_header->my_simple_lock) {
@@ -61,6 +96,7 @@ int *add_used_block(ssize_t size) {
   area *smallest_block = NULL;
   area *last_block = block;
 
+  // look for smallest block that contains a length of desired size OR greater
   while (block != NULL) {
     assert(block->marker == BLOCK_MARKER);
     if ((block->length + sizeof(area)) >= size && block->in_use == false) {
