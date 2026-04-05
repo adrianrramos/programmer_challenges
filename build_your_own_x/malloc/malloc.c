@@ -45,6 +45,8 @@ my_stats *get_malloc_header() {
   return malloc_header;
 }
 
+// TODO: update this function to NOT start all over but instead,
+// find the last starting from a given block
 area *find_last_block() {
   my_stats *malloc_header = get_malloc_header();
   area *block = (area *)((char *)malloc_header + sizeof(my_stats));
@@ -111,6 +113,9 @@ int *add_used_block(ssize_t size) {
   // no big enough blocks.
   if (smallest_block == NULL) {
     area *last_block = find_last_block();
+    // endlessly adding a page worth of bytes to the last_block to meet the size
+    // requirement is only possible because last_block->length and sbrk(0)
+    // both point to the end of the heap
     while (last_block->length < size) {
       sbrk(4096);
       last_block->length += 4096;
@@ -124,11 +129,15 @@ int *add_used_block(ssize_t size) {
   // block. The size of area header is part of the check because it will need 
   // space too for the new block. Also, at least one byte is needed for the new 
   // block's content
+  
+
+  // LEFT OFF HERE CONTINUE:::::
   int must_have_size = smallest_block->length - size - sizeof(area) - 1;
   if (must_have_size <= 0) {
     sbrk(4096);
     malloc_header->amount_of_pages += 1;
     last_block->length += 4096;
+    // this is needed if smallest_block == last_block
     must_have_size = smallest_block->length - size - sizeof(area) - 1;
   }
 
