@@ -125,13 +125,11 @@ int *add_used_block(ssize_t size) {
   }
   // found a block
   smallest_block->in_use = true;
+
   // create a new block, which will be free. The list always must end on a free
   // block. The size of area header is part of the check because it will need 
   // space too for the new block. Also, at least one byte is needed for the new 
   // block's content
-  
-
-  // LEFT OFF HERE CONTINUE:::::
   int must_have_size = smallest_block->length - size - sizeof(area) - 1;
   if (must_have_size <= 0) {
     sbrk(4096);
@@ -141,22 +139,24 @@ int *add_used_block(ssize_t size) {
     must_have_size = smallest_block->length - size - sizeof(area) - 1;
   }
 
+  // complete the split, this new_block is made by using the remaining memory 
+  // that did not get taken from small_block or last_block
   int remaining_size = must_have_size += 1;
   malloc_header->amount_of_blocks += 1;
   area *new_block = (area *)((char *)smallest_block + sizeof(area) + size);
   new_block->marker = BLOCK_MARKER;
+  new_block->in_use = false;
   new_block->prev = smallest_block;
   new_block->next = smallest_block->next;
+  new_block->length = remaining_size;
   if (new_block->next != NULL) {
     (new_block->next)->prev = new_block;
   }
 
   smallest_block->next = new_block;
-  new_block->length = remaining_size;
   smallest_block->length = size;
   malloc_header->my_simple_lock = false;
   return (int *)((char *)smallest_block + sizeof(area));
-
 }
 
 int *an_malloc(ssize_t size) {
