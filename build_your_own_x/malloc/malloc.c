@@ -1,4 +1,3 @@
-#include <cstring>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <assert.h>
@@ -45,6 +44,11 @@ my_stats *get_malloc_header() {
   return malloc_header;
 }
 
+void reduce_heap_size_if_possible() {
+  // TODO: review and implement
+
+}
+
 // TODO: update this function to NOT start all over but instead,
 // find the last starting from a given block
 area *find_last_block() {
@@ -69,23 +73,43 @@ bool an_free(void *ptr) {
     return false;
   } else {
     block->in_use = false;
+    // fill the entire freed user buffer with zero bytes
     memset(ptr, 0, block->length);
     if (block->next != NULL && (block->next)->in_use == false) {
       // Next block is not used, we can merge them
       area *not_used_next_block = block->next;
-      // skip next block in linked list.
-      if (not_used_next_block != NULL) {
-        // connect current block and two blocks ahead
-        block->next = not_used_next_block->next;
-        // if two blocks ahead, the block is not null, we connect it back.
-        if (not_used_next_block->next != NULL) {
-          not_used_next_block->next->prev = block;
-        }
-      } else {
-        block->next = NULL;
+      // skip next block in linked list to connect current block and two blocks ahead
+      block->next = not_used_next_block->next;
+      // if two blocks ahead, the block is not null, we connect it back.
+      if (not_used_next_block->next != NULL) {
+        not_used_next_block->next->prev = block;
       }
+
+      // current block adds the next block
+      block->length += sizeof(area) + not_used_next_block->length;
+      // erase header and data; take into account the header of the malloc structure
+      memset((void *)not_used_next_block, 0, sizeof(area) + not_used_next_block->length);
+      malloc_header->amount_of_blocks -= 1;
     }
+
+    if (block->prev != NULL && (block->prev)->in_use == false) {
+      // previous block can be merged with current, so we delete current.
+      area *to_delete_block = block;
+      block = block->prev;
+      // previous block gets new extra size
+      block->length += sizeof(area) + to_delete_block->length;
+      // skip next block. to_delete_block cannot be null, since we check that above
+      block->next = to_delete_block->next;
+      // backward connection
+      if (block->next != NULL) {
+        block->next->prev = block;
+      }
+      malloc_header->amount_of_blocks -= 1;
+    }
+    reduce_heap_size_if_possible();
   }
+  malloc_header->my_simple_lock = false;
+  return true;
 }
 
 int *add_used_block(ssize_t size) {
