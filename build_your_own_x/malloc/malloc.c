@@ -1,3 +1,4 @@
+// TODO: improvments - implent the use of a TAIL node, and use in operations dealing with last_block
 #include <stdatomic.h>
 #include <stdint.h>
 #include <assert.h>
@@ -34,6 +35,7 @@ typedef struct free_area area;
 
 const int MAGICAL_BYTES = 0x55;
 const int BLOCK_MARKER = 0xDD;
+const int PAGE_SIZE = 4096;
 
 char *heap_start = NULL;
 
@@ -44,10 +46,17 @@ my_stats *get_malloc_header() {
   return malloc_header;
 }
 
-void reduce_heap_size_if_possible() {
-  // TODO: review and implement
-
+area *find_previous_used_block(area *ptr) {
+  area *mov_ptr = ptr;
+  while (mov_ptr->prev != NULL) {
+    mov_ptr = mov_ptr->prev;
+    if (mov_ptr->in_use == true) {
+      return mov_ptr;
+    }
+  }
+  return NULL;
 }
+
 
 // TODO: update this function to NOT start all over but instead,
 // find the last starting from a given block
@@ -58,6 +67,41 @@ area *find_last_block() {
     block = block->next;
   }
   return block;
+}
+
+void reduce_heap_size_if_possible() {
+  area *last_block = find_last_block();
+  area *prev_used_block = find_previous_used_block(last_block);
+  if (prev_used_block == NULL) {
+    // It is the only block, which should never be deleted. We could only reduce its size to 1 Page
+    if (last_block->length > PAGE_SIZE) {
+      last_block->length = PAGE_SIZE;
+    }
+    prev_used_block = last_block;
+  }
+  
+  void *new_end = (void *)prev_used_block + sizeof(area) + prev_used_block->length;
+  void *heap_end = sbrk(0);
+  my_stats *malloc_header = get_malloc_header();
+  while (new_end < heap_end - PAGE_SIZE) {
+    sbrk(-PAGE_SIZE);
+    heap_end = sbrk(0);
+    malloc_header->amount_of_pages -= 1;
+  }
+
+  // Now in most cases there is remaining space between the new end
+  // and the heap end. If there is enough space to inject a block we will.
+  if (heap_end - new_end > sizeof(area) + 1) {
+    area *new_not_used_block = (area *)new_end;
+    *new_not_used_block = (area){
+      .marker = BLOCK_MARKER,
+      .in_use = false,
+      .prev = prev_used_block,
+      .next = NULL,
+      .length = (size_t)((char *)heap_end - (char *)new_end) - sizeof(area),
+    };
+    prev_used_block->next = new_not_used_block;
+  }
 }
 
 bool an_free(void *ptr) {
@@ -141,8 +185,8 @@ int *add_used_block(ssize_t size) {
     // requirement is only possible because last_block->length and sbrk(0)
     // both point to the end of the heap
     while (last_block->length < size) {
-      sbrk(4096);
-      last_block->length += 4096;
+      sbrk(PAGE_SIZE);
+      last_block->length += PAGE_SIZE;
       malloc_header->amount_of_pages += 1;
     }
     smallest_block = last_block;
@@ -156,9 +200,9 @@ int *add_used_block(ssize_t size) {
   // block's content
   int must_have_size = smallest_block->length - size - sizeof(area) - 1;
   if (must_have_size <= 0) {
-    sbrk(4096);
+    sbrk(PAGE_SIZE);
     malloc_header->amount_of_pages += 1;
-    last_block->length += 4096;
+    last_block->length += PAGE_SIZE;
     // this is needed if smallest_block == last_block
     must_have_size = smallest_block->length - size - sizeof(area) - 1;
   }
@@ -190,7 +234,7 @@ int *an_malloc(ssize_t size) {
     // calling sbrk with an increment of 0 can be used to find the current 
     // location of the program break
     heap_start = sbrk(0);
-    sbrk(4096);
+    sbrk(PAGE_SIZE);
   }
   char *heap_end = sbrk(0);
   long int length = heap_end - heap_start;
