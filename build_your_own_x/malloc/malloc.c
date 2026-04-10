@@ -1,4 +1,5 @@
 // TODO: improvments - implent the use of a TAIL node, and use in operations dealing with last_block
+// TODO: implement testing
 #include <stdatomic.h>
 #include <stdint.h>
 #include <assert.h>
@@ -169,7 +170,7 @@ int *add_used_block(ssize_t size) {
   // look for smallest block that contains a length of desired size OR greater
   while (block != NULL) {
     assert(block->marker == BLOCK_MARKER);
-    if ((block->length + sizeof(area)) >= size && block->in_use == false) {
+    if (block->length >= size + sizeof(area) + 1 && block->in_use == false) {
       if (smallest_block == NULL || smallest_block->length > block->length) {
         smallest_block = block;
       }
