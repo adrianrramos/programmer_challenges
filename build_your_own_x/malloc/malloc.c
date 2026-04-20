@@ -1,5 +1,6 @@
 // TODO: improvments - implent the use of a TAIL node, and use in operations dealing with last_block
 // TODO: implement testing
+#include <iso646.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <assert.h>
@@ -311,7 +312,7 @@ void test_free() {
   area *first_block = find_first_block();
   assert(first_block->next != NULL);
   assert(first_block->length == 2048);
-  
+
   area *second_block = first_block->next;
   assert(second_block->marker == BLOCK_MARKER);
   assert(second_block->in_use == false);
@@ -374,6 +375,25 @@ void test_complex_set_of_malloc_and_free_calls() {
   // The second block is whatever is left from the first page
   assert(second_block->in_use == false);
   assert(first_block->length == 2048);
+  assert(second_block->length ==
+          PAGE_SIZE - sizeof(my_stats) - 2 * sizeof(area) - first_block->length);
+  assert(second_block->next == NULL);
+  // test block unification, add three blocks, free the left, free the right,
+  // and then free the middle
+  uint8_t *third = (uint8_t *)an_malloc(1000);
+  assert(malloc_header->amount_of_pages == 1);
+  assert(malloc_header->amount_of_blocks == 3);
+  // A thid, empty block has been created
+  area *third_block_new = second_block->next;
+  assert(third_block_new->marker == BLOCK_MARKER);
+  assert(third_block_new->in_use == false);
+  // The second block, which before was longer, now is used for the call. The
+  // third block is the one that is empty
+  assert(second_block->length == 1000);
+  assert(third_block_new->length == PAGE_SIZE - sizeof(my_stats) -
+                                      3 * sizeof(area) - first_block->length -
+                                      second_block->length);
+  assert(third_block_new->next == NULL);
 }
 
 
