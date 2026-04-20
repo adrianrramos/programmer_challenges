@@ -257,8 +257,82 @@ int *an_malloc(ssize_t size) {
   return add_used_block(size);
 }
 
+/** UNIT TESTING OF MALLOC **/
+
+/**
+ * Allocate one block of memory with at least length of 1 byte
+ * - Pointer returned from malloc is at the start of the user's 
+ *   payload, therefore pointer - sizeof(area) brings us to the 
+ *   start of the marker.
+ * - Then check if the first block is a valid block with a valid marker
+ * - Then check if the user area is writeable setting the first byte to 'C'
+ */
+void test_basic_malloc() {
+  char *ptr = (char *)an_malloc(1);
+  area *first_block = (void *)ptr - sizeof(area);
+  assert(first_block->marker == BLOCK_MARKER);
+  *ptr = 'C';
+  assert(*ptr == 'C');
+}
+
+/**
+ *
+ * TODO: finish writing this summary
+ * The "little endian" byte asserts
+ *
+ *
+ */
+void test_bigger_than_available_malloc() {
+  uint16_t *ptr = (uint16_t *)an_malloc(5000);
+  area *first_block = (void *)ptr - sizeof(area);
+  for (uint16_t i = 0; i <= 2499; i = i + 1) {
+    *(ptr + i) = i;
+  }
+  assert(first_block->marker == BLOCK_MARKER);
+  assert(*ptr == 0);
+  assert(*(ptr + 2) == 2);
+  assert(*(ptr + 2499) == 2499);
+  // little endian valid only
+  assert(*((uint8_t *)ptr + 4999) == (2499 >>8));
+  assert(*((uint8_t *)ptr + 4998) == (2499 & 0xFF));
+}
+
+/**
+ * A function to invoke tests and raise for test exceptions
+ *
+ * Calling fork() returns 0 for child process, and child pid for
+ * parent process
+ *
+ * If the child failed assert -> SIGABRT or segfault -> SIGSEGV
+ * The child dies with a `signal` instead of clean exit(0).
+ *
+ * WIFSIGNALED(status) is true if the child was killed by a signal,
+ * a common pattern when assert fails.
+ *
+ *
+ *
+ */
+void call_test(void (*test_func)(), const char *msg) {
+  pid_t pid = fork();
+  if (pid == 0) {
+    test_func();
+    exit(0);
+  } else {
+    int status;
+    waitpid(pid, &status, 0);
+    if (WIFSIGNALED(status)) {
+      printf("%s crashed with signal %d\n", msg, WTERMSIG(status));
+    } else {
+      printf("%s passed\n", msg);
+    }
+  }
+}
+
 
 int main(void)
 {
+  call_test(test_basic_malloc, "Basic Malloc");
+  call_test(test_bigger_than_available_malloc, "Request more memory Malloc");
+
   return 0;
 }
