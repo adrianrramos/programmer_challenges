@@ -58,6 +58,11 @@ area *find_previous_used_block(area *ptr) {
   return NULL;
 }
 
+area *find_first_block() {
+  my_stats *malloc_header = get_malloc_header();
+  return (area *)((char *)malloc_header + sizeof(my_stats));
+}
+
 
 // TODO: update this function to NOT start all over but instead,
 // find the last starting from a given block
@@ -298,6 +303,81 @@ void test_bigger_than_available_malloc() {
 }
 
 /**
+ *
+ * TODO: write the summary
+ */
+void test_free() {
+  uint8_t *first = (uint8_t *)an_malloc(2048);
+  area *first_block = find_first_block();
+  assert(first_block->next != NULL);
+  assert(first_block->length == 2048);
+  
+  area *second_block = first_block->next;
+  assert(second_block->marker == BLOCK_MARKER);
+  assert(second_block->in_use == false);
+  assert(second_block->next == NULL);
+  assert(second_block->length == PAGE_SIZE - sizeof(my_stats) -
+                                    (2 * sizeof(area)) - first_block->length);
+  an_free(first);
+  assert(first_block->marker == BLOCK_MARKER);
+  assert(first_block->next == NULL);
+  assert(first_block->length == PAGE_SIZE - sizeof(my_stats) - sizeof(area));
+}
+
+/**
+ *
+ * TODO: write the summary
+ */
+void test_middle_block_edge_case() {
+  void *a = an_malloc(100);
+  void *b = an_malloc(50);
+  void *c = an_malloc(100);
+  an_free(b); // middle block is now 50 bytes free
+  void *d = an_malloc(45); // 50 - 45 sizeof(area) < 0 -> segfault
+  area *block_d = (area *)((char *)d - sizeof(area));
+  assert(block_d->marker == BLOCK_MARKER);
+  assert(block_d->length == 45);
+  an_free(a);
+  an_free(c);
+  an_free(d);
+}
+
+/**
+ *
+ * TODO: write the summary
+ */
+void test_complex_set_of_malloc_and_free_calls() {
+  uint8_t *first = (uint8_t *)an_malloc(2048); // leave another 2048 on the first page
+  area *first_block = find_first_block();
+  assert(first_block->length == 2048);
+  area *second_block = first_block->next;
+  assert(second_block->length ==
+          PAGE_SIZE - sizeof(my_stats) - 2 * sizeof(area) - first_block->length);
+  assert(second_block->next == NULL);
+  assert(second_block->prev == first_block);
+  uint8_t *second = (uint8_t *)an_malloc(10000); // will need around two or more pages
+  assert(second_block->length == 10000);
+  assert(second_block->next != NULL);
+  area *third_block = second_block->next;
+  assert(third_block->length == 3 * PAGE_SIZE - sizeof(my_stats) -
+                                    3 * sizeof(area) - first_block->length -
+                                    second_block->length);
+  my_stats *malloc_header = get_malloc_header();
+  assert(malloc_header->amount_of_pages == 3);
+  assert(malloc_header->amount_of_blocks == 3);
+  an_free(second);
+  assert(malloc_header->amount_of_pages == 1);
+  assert(malloc_header->amount_of_blocks == 2);
+  int heap_size = sbrk(0) - (void *)heap_start;
+  assert(heap_size == PAGE_SIZE);
+
+  // The second block is whatever is left from the first page
+  assert(second_block->in_use == false);
+  assert(first_block->length == 2048);
+}
+
+
+/**
  * A function to invoke tests and raise for test exceptions
  *
  * Calling fork() returns 0 for child process, and child pid for
@@ -333,6 +413,9 @@ int main(void)
 {
   call_test(test_basic_malloc, "Basic Malloc");
   call_test(test_bigger_than_available_malloc, "Request more memory Malloc");
+  call_test(test_free, "Basic Free");
+  call_test(test_middle_block_edge_case, "Middle Block Edge Case");
+  call_test(test_complex_set_of_malloc_and_free_calls, "Complex tasks");
 
   return 0;
 }
